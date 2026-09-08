@@ -20,6 +20,9 @@ data/**
 !data/processed/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+# Frozen split ids ARE committed — they are the definition of the splits, not data.
+!data/splits/
+!data/splits/*.json
 
 # Build artifacts of retrieval stages
 indexes/
