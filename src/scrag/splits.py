@@ -44,11 +44,16 @@ SPLIT_SEED = 20260908
 TEST_SIZE = 150
 TEST_PER_TYPE = {QuestionType.BRIDGE: 75, QuestionType.COMPARISON: 75}
 SMOKE_SIZE = 100
+TUNE_SIZE = 1000
+VERIFY_TUNE_SIZE = 500
+VERIFY_TUNE_PER_TYPE = {QuestionType.BRIDGE: 403, QuestionType.COMPARISON: 97}
 
 DEFAULT_DATASET = Path("data/raw/hotpot_dev_distractor_v1.json")
 DEFAULT_SPLITS_DIR = Path("data/splits")
 TEST_FILENAME = "test_ids.json"
 SMOKE_FILENAME = "smoke_ids.json"
+TUNE_FILENAME = "tune_ids.json"
+VERIFY_TUNE_FILENAME = "verify_tune_ids.json"
 
 
 class SplitError(RuntimeError):
@@ -160,6 +165,136 @@ def dev_ids(examples: Sequence[Example], test_ids: Iterable[str]) -> list[str]:
     return sorted(e.qid for e in examples if e.qid not in excluded)
 
 
+def select_tune_ids(
+    examples: Sequence[Example],
+    test_ids: Iterable[str],
+    *,
+    seed: int = SPLIT_SEED,
+) -> list[str]:
+    """TUNE: a DEV subset for selecting hyperparameters.
+
+    Added in Phase 6, because SMOKE's 100 questions cannot resolve an effect of a few
+    points (its standard error is ~0.05). DEV itself is unchanged and still the full
+    7255; TUNE and DEV-EVAL are sub-splits of it, not a redefinition.
+
+    Stratified to DEV's own bridge/comparison ratio, with its own RNG stream.
+    """
+    dev = [e for e in examples if e.qid not in set(test_ids)]
+    bridge = _sorted_ids(e for e in dev if e.question_type is QuestionType.BRIDGE)
+    comparison = _sorted_ids(e for e in dev if e.question_type is QuestionType.COMPARISON)
+
+    n_bridge = round(TUNE_SIZE * len(bridge) / len(dev))
+    n_comparison = TUNE_SIZE - n_bridge
+
+    rng = random.Random(seed + 2)
+    return sorted(rng.sample(bridge, n_bridge) + rng.sample(comparison, n_comparison))
+
+
+def dev_eval_ids(
+    examples: Sequence[Example],
+    test_ids: Iterable[str],
+    tune_ids: Iterable[str],
+) -> list[str]:
+    """DEV-EVAL is defined by exclusion — DEV minus TUNE."""
+    excluded = set(test_ids) | set(tune_ids)
+    return sorted(e.qid for e in examples if e.qid not in excluded)
+
+
+def select_verify_tune_ids(
+    examples: Sequence[Example],
+    tune_ids: Iterable[str],
+    *,
+    seed: int = SPLIT_SEED,
+) -> list[str]:
+    """The 500-question subset of TUNE used for Phase 7 verifier evaluation.
+
+    Stratified to TUNE's own bridge/comparison ratio rather than taken as a prefix,
+    so the verifier is measured on the same question mix as the retriever was. The
+    quotas are fixed constants and the sample is drawn from sorted ids, so selection
+    depends only on the seed — never on any verifier output.
+    """
+    pool = set(tune_ids)
+    tune = [e for e in examples if e.qid in pool]
+
+    rng = random.Random(seed + 3)
+    chosen: list[str] = []
+    for question_type, quota in sorted(
+        VERIFY_TUNE_PER_TYPE.items(), key=lambda kv: kv[0].value
+    ):
+        candidates = _sorted_ids(e for e in tune if e.question_type is question_type)
+        if len(candidates) < quota:
+            raise SplitError(
+                f"cannot draw {quota} {question_type.value} ids from TUNE: "
+                f"only {len(candidates)} exist"
+            )
+        chosen.extend(rng.sample(candidates, quota))
+    return sorted(chosen)
+
+
+def write_verify_tune_split(
+    examples: Sequence[Example],
+    *,
+    splits_dir: Path = DEFAULT_SPLITS_DIR,
+    source: Path = DEFAULT_DATASET,
+    seed: int = SPLIT_SEED,
+    force: bool = False,
+) -> SplitFile:
+    """Generate and write the Phase 7 verifier evaluation subset."""
+    path = splits_dir / VERIFY_TUNE_FILENAME
+    if path.exists() and not force:
+        raise SplitError(f"refusing to overwrite frozen split: {path}")
+
+    tune = read_split(splits_dir / TUNE_FILENAME)
+    split = SplitFile(
+        name="verify_tune",
+        seed=seed + 3,
+        source=str(source),
+        description=(
+            f"Phase 7 verifier evaluation subset: {VERIFY_TUNE_SIZE} ids drawn from "
+            + ", ".join(
+                f"{n} {t.value}"
+                for t, n in sorted(VERIFY_TUNE_PER_TYPE.items(), key=lambda kv: kv[0].value)
+            )
+            + ". Subset of TUNE, disjoint from TEST. Selection is independent of any "
+            "verifier output."
+        ),
+        ids=tuple(select_verify_tune_ids(examples, tune.ids, seed=seed)),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(split.to_json(), indent=2) + "\n", encoding="utf-8")
+    return split
+
+
+def write_tune_split(
+    examples: Sequence[Example],
+    *,
+    splits_dir: Path = DEFAULT_SPLITS_DIR,
+    source: Path = DEFAULT_DATASET,
+    seed: int = SPLIT_SEED,
+    force: bool = False,
+) -> SplitFile:
+    """Generate and write the TUNE split. Refuses to overwrite without `force`."""
+    path = splits_dir / TUNE_FILENAME
+    if path.exists() and not force:
+        raise SplitError(f"refusing to overwrite frozen split: {path}")
+
+    test = read_split(splits_dir / TEST_FILENAME)
+    split = SplitFile(
+        name="tune",
+        seed=seed + 2,
+        source=str(source),
+        description=(
+            f"TUNE: {TUNE_SIZE} ids drawn from DEV (disjoint from TEST), stratified to "
+            "DEV's bridge/comparison ratio. For hyperparameter selection only; report "
+            "on DEV-EVAL (DEV minus TUNE)."
+        ),
+        ids=tuple(select_tune_ids(examples, test.ids, seed=seed)),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(split.to_json(), indent=2) + "\n", encoding="utf-8")
+    return split
+
+
 # --------------------------------------------------------------------------------
 # IO
 # --------------------------------------------------------------------------------
@@ -223,7 +358,8 @@ def read_split(path: Path) -> SplitFile:
 
 def load_split_ids(name: str, *, splits_dir: Path = DEFAULT_SPLITS_DIR) -> frozenset[str]:
     """Ids of a named split ('test' or 'smoke'), for filtering examples at load time."""
-    filename = {"test": TEST_FILENAME, "smoke": SMOKE_FILENAME}[name]
+    filename = {"test": TEST_FILENAME, "smoke": SMOKE_FILENAME, "tune": TUNE_FILENAME,
+                "verify_tune": VERIFY_TUNE_FILENAME}[name]
     return frozenset(read_split(splits_dir / filename).ids)
 
 

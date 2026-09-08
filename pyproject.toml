@@ -11,6 +11,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "sentence-transformers",  # dense embeddings (Phase 3)
     "numpy",                  # embedding maths and the embedding cache
+    "google-genai",           # Gemini verifier (Phase 7)
 ]
 
 [project.optional-dependencies]

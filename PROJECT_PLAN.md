@@ -229,16 +229,156 @@ against dense's 0.07 ms cache-served. About **1000x the latency for a negative r
 help in Phase 6 once queries are decomposed into single-hop sub-questions, which is
 the shape this model was actually trained for.
 
-### Phase 6 — Multi-hop retrieval
-Query decomposition and iterative hop-by-hop retrieval.
+### Phase 6 — Multi-hop retrieval ✅ adopted
+Two-hop retrieval with evidence-based routing.
 **Acceptance:** on questions whose second gold paragraph is unreachable from the
 original query, gold-pair recall improves over single-pass.
 
-### Phase 7 — Evidence verification
-Judge whether retrieved evidence actually supports the claim it is retrieved for.
+**Hypothesis.** Dense retrieval finds *a* gold paragraph for 90.9% of bridge questions
+at rank 1, while bridge `both@2` is only 0.474 — so hop 1 is solved and the entire
+deficit is hop 2. Adding hop-1 text to the query should supply the context that makes
+the second paragraph reachable. Structural analysis of DEV supports this: 47.2% of
+bridge questions name the second paragraph inside the first's supporting sentences,
+73.9% have a one-directional link, and only 3.0% are order-ambiguous. Every question
+has exactly 2 gold paragraphs, so **two hops suffice by construction** — no loop or
+termination rule is needed.
+
+**Unrouted 2-hop (DEV n=7255) nets to nothing — because it helps and harms equally:**
+
+| retriever | recall@1 | recall@2 | recall@3 | recall@5 | both@2 | vs dense |
+|---|---|---|---|---|---|---|
+| Dense | 0.454 | 0.762 | 0.855 | 0.926 | 0.554 | — |
+| 2-hop (title) | 0.454 | 0.760 | 0.849 | 0.924 | 0.555 | +0.001 |
+| 2-hop (paragraph) | 0.454 | 0.737 | 0.828 | 0.908 | 0.521 | −0.033 |
+| 2-hop (sentence) | 0.454 | 0.747 | 0.835 | 0.911 | 0.540 | −0.014 |
+
+The aggregate hides two opposing effects. With paragraph expansion, **bridge improves
+0.474 → 0.521 (+0.047) while comparison collapses 0.885 → 0.521 (−0.364)**. Comparison
+questions name both entities outright (99.9% of them) and have no sequential structure;
+stuffing hop-1 text into the query drowns the second entity.
+
+**Routing signal: `m23` = dense score(rank 2) − score(rank 3).** A wide gap means dense
+has cleanly separated a pair and hop 2 has nothing to add. AUC 0.776 for predicting
+"dense top-2 already holds both gold" (0.891 on comparison). Notably the **rank-1/rank-2
+margin is useless (AUC 0.456) — mildly anti-predictive**: a large gap there means rank 2
+is weak relative to rank 1. `m23` beat both hand-tuned keyword rules (0.586 vs 0.577 and
+0.583) while using no linguistic knowledge, and it is not merely a type detector — its
+AUC for separating comparison from bridge (0.717) is *lower* than for predicting dense
+sufficiency.
+
+**Threshold selection.** SMOKE (n=100) **failed** to select a threshold: its whole curve
+spanned 0.8 standard errors, the "peak" was one question, the apparent plateau was
+non-contiguous, and it disagreed in sign with DEV at t=0.020 and t=0.040. A **TUNE split**
+(1000 ids, seed 20260910, stratified 805 bridge / 195 comparison) was carved from DEV for
+selection, leaving **DEV-EVAL** (6255) for reporting. TUNE gave a smooth curve with a
+contiguous stable region of 0.010–0.030; **t = 0.020 was frozen as its midpoint**, not
+the arithmetic peak at 0.025 (which was better by 0.002 — one-eighth of a standard error).
+
+**DEV-EVAL result (n=6255), threshold frozen, not retuned:**
+
+| system | recall@1 | recall@2 | recall@3 | recall@5 | both@2 | vs dense | ms/q |
+|---|---|---|---|---|---|---|---|
+| Dense | 0.455 | 0.762 | 0.855 | 0.925 | 0.554 | — | 0.04 |
+| 2-hop everywhere | 0.455 | 0.737 | 0.828 | 0.909 | 0.521 | −0.033 | 11.05 |
+| **Routed (m23<0.020)** | 0.455 | **0.773** | 0.851 | 0.916 | **0.586** | **+0.031** | 3.66 |
+
+By type: bridge 0.474 → **0.527**, comparison 0.885 → 0.831. 454 recoveries vs 257
+regressions (reg/rec 0.57), net +197 questions, **McNemar z = 7.35, p = 2e-13**.
+Routes 32.1% of questions to hop 2 — 36.5% of bridge, 13.6% of comparison — without ever
+seeing a question type. TUNE and DEV-EVAL agree closely (+0.031 vs +0.031; 32.5% vs
+32.1% routed), which is the main evidence the threshold is not overfitted.
+
+**Limitations.**
+- **DEV-EVAL is not a pristine held-out estimate for the full model-selection process.**
+  An earlier exploratory analysis swept `m23` on all of DEV, so the choice to pursue this
+  signal was informed by data that includes DEV-EVAL. The TUNE/DEV-EVAL split cleanly
+  isolates the *threshold* choice only. TEST remains untouched and is the clean estimate.
+- The threshold 0.020 is calibrated to `bge-small` cosine scores over ~10 candidates. The
+  *signal* should transfer to 2Wiki/MuSiQue; the *constant* will not and needs
+  recalibration per dataset.
+- `m23` assumes exactly 2 gold paragraphs. MuSiQue's 3–4 hop questions need a cliff after
+  rank *h*, and choosing *h* is itself unsolved. This is a 2-hop-specific instance of a
+  general idea.
+- Routing still costs comparison questions 0.054 (0.885 → 0.831); the router is right
+  about type roughly 86% of the time, not always.
+- Per-question oracle routing would reach 0.678, so 0.586 captures about 26% of the
+  available headroom.
+
+**Decision: adopt routed 2-hop retrieval as the default retriever.** First gain since
+Phase 3, and the first phase whose mechanism was predicted in advance and confirmed.
+
+### Phase 7 — Evidence verification ✅ adopted
+Judge whether the retrieved evidence is sufficient to answer the question.
 **Acceptance:** verifier agreement against HotpotQA supporting-fact labels, reported as
 precision/recall — including its false-confidence rate, which is the number that
 matters for the loop.
+
+**Formulation.** Binary SUFFICIENT / INSUFFICIENT over the question plus the top-2
+paragraphs from routed retrieval, judged jointly in one LLM call. Not three-way:
+HotpotQA distractors are irrelevant, not contradictory, so REFUTED has no population.
+Not answer-verification either — that needs an answer generator, which is Phase 9.
+Paragraphs are judged together because all 3664 complete-evidence questions in DEV-EVAL
+need facts from *both* gold paragraphs; a per-paragraph verifier would call each one
+individually insufficient every time.
+
+**Setup.** Gemini `gemini-3.5-flash-lite` via `google-genai`, temperature 0, seed
+20260908, `max_output_tokens=256`, no thinking configuration, structured JSON output
+against a fixed schema (`reason` first, so a short justification precedes the verdict).
+Prompt version `v1`, frozen. Verdicts cached append-only in
+`data/processed/verify_cache.jsonl`, keyed by `sha1(model + prompt_version + prompt)` —
+the model is in the key, so verdicts can never be reused across models.
+
+**Evaluation split.** A frozen 500-question subset of TUNE
+(`verify_tune_ids.json`, sha256 `dd0a1dd8…`, seed 20260911), stratified 403 bridge /
+97 comparison to preserve TUNE's ratio. Selection is independent of any verifier output.
+**Coverage: 486/500 (97.2%)** — 1 excluded (JSON truncation, permanent at temperature 0)
+and 13 unevaluated (daily quota). The run was stopped at the quota rather than resumed.
+
+**Results (n=486):**
+
+| | gold INSUFFICIENT | gold SUFFICIENT |
+|---|---|---|
+| verifier INSUFFICIENT | 154 | 47 |
+| verifier SUFFICIENT | 46 | 239 |
+
+**Accuracy 0.809.** INSUFFICIENT precision 0.766 / recall 0.770 / **F1 0.768**.
+False SUFFICIENT (missed insufficiency) 46/200 = **0.230**; false INSUFFICIENT
+47/286 = 0.164. Errors are near-symmetric, and the verifier's SUFFICIENT rate (58.6%)
+tracks gold (58.8%).
+
+**Against the free `m23` baseline, recomputed on the same 486 questions:**
+
+| | verifier | m23 |
+|---|---|---|
+| AUC | **0.804** | 0.729 |
+| precision | **0.766** | 0.632 |
+| recall | **0.770** | 0.490 |
+| F1 | **0.768** | 0.552 |
+
+The recall gap is the substantive one: a score margin misses over half of insufficient
+cases; the verifier catches 77%.
+
+**Confidence is not usable for routing.** 93.8% of verdicts report 1.00 and 96.1% are
+≥0.95; mean confidence is 0.996 when correct and 0.985 when wrong. The *ranking* still
+carries signal (AUC 0.804), almost all of it from the ~4% below 1.00 — but the values
+cannot be thresholded. Phase 8 must use the binary verdict.
+
+**Cost:** 1.004 calls/question, mean latency **1.42 s** — roughly 390x routed
+retrieval's 3.66 ms, and now the dominant cost in the pipeline. 2 failures in 475 calls
+(0.4%): one JSON truncation, one daily-quota stop.
+
+**By type:** bridge n=390 accuracy 0.828, false-SUFFICIENT rate 0.238; comparison n=96
+accuracy 0.729, false-SUFFICIENT rate 0.091. Bridge questions are over-approved,
+comparison questions over-flagged.
+
+**Known limitation — the gold proxy is a lower bound on the verifier.** Sufficiency is
+proxied by "both HotpotQA-labelled gold paragraphs were retrieved", but HotpotQA labels
+*one* sufficient evidence path, not every one. Several scored false-SUFFICIENT cases are
+genuinely answerable from the retrieved text (e.g. Sissy Spacek + Thomas Rickman both
+naming "Coal Miner's Daughter"). **The measured 0.230 false-positive rate is therefore
+an upper bound on true error, and 0.809 a lower bound on true accuracy.** Two different
+models produced the same pattern independently, which points to a labelling artifact
+rather than a model quirk.
 
 ### Phase 8 — Self-correction loop
 On verification failure, reformulate and re-retrieve, under a hop/iteration budget.
@@ -277,8 +417,8 @@ optimization beyond honest measurement.
 
 ## Open questions
 
-- Which LLM backs verification and generation, and whether one model does both —
-  deferred to Phase 7.
+- Which LLM backs answer generation — deferred to Phase 9. Verification uses Gemini
+  Flash Lite; the free tier's 500 requests/day is the binding constraint on scale.
 - Whether hop count is fixed or dynamically decided — deferred to Phase 6.
 - Correction budget (max iterations) — deferred to Phase 8.
 
@@ -303,6 +443,17 @@ optimization beyond honest measurement.
 | 2026-09-08 | Embeddings L2-normalised at encode time | Makes cosine a dot product, and bounds scores in [-1,1] for Phase 4 fusion |
 | 2026-09-08 | RRF over complete rankings, not truncated lists | Both retrievers already score all ~10 candidates; truncation adds a hyperparameter and creates a missing-document case that otherwise cannot arise |
 | 2026-09-08 | `rrf_k` swept, not fixed at the published 60 | Over 10 candidates, k=60 spans weights of only 1/61–1/70 and flattens RRF into "average rank"; DEV curve peaks at 3 |
+| 2026-09-09 | Verification is binary SUFFICIENT/INSUFFICIENT | Distractors are irrelevant, not contradictory, so REFUTED has no population; answer-verification would require Phase 9's generator |
+| 2026-09-09 | Gemini Flash Lite, not Anthropic or a local model | Zero budget. `gemini-2.5-flash` is closed to new keys and `gemini-3.6-flash` allows only 20 requests/day; Flash Lite gives 15 RPM / 500 RPD |
+| 2026-09-09 | Verdict cache is the reproducibility mechanism | Gemini model ids are moving aliases and cannot be pinned to a revision the way `bge-small` was |
+| 2026-09-09 | Frozen 500-question verifier split, stratified | A prefix of TUNE would have shifted the bridge/comparison ratio to 77.8%; the stratified draw holds 80.6% |
+| 2026-09-09 | Confidence NOT used for routing | 93.8% of verdicts report 1.00; correct-vs-wrong confidence differs by 0.011 |
+| 2026-09-09 | Verifier adopted over m23 for Phase 8 | +0.216 F1 and +0.280 recall on the same 486 questions, at 1.42 s/question |
+| 2026-09-08 | Routed 2-hop retrieval adopted as default | +0.031 both@2 on DEV-EVAL (0.554 → 0.586), McNemar p=2e-13, at 3.66 ms/q |
+| 2026-09-08 | Routing on `m23`, not keyword rules | Beats hand-tuned keyword rules (0.586 vs 0.577/0.583) with no linguistic assumptions, and should transfer to datasets without a bridge/comparison dichotomy |
+| 2026-09-08 | TUNE split (1000 ids) carved from DEV | SMOKE's 100 questions cannot resolve a 0.03 effect (SE 0.05); its curve disagreed in sign with DEV. DEV keeps its 7255 definition; TUNE/DEV-EVAL are Phase-6 sub-splits |
+| 2026-09-08 | Threshold frozen at the stable-region midpoint | 0.020 over the peak 0.025, which was better by 0.002 — one-eighth of a standard error |
+| 2026-09-08 | Exactly 2 hops, no loop or termination rule | Every question has exactly 2 gold paragraphs; an n-hop loop would solve a problem this dataset does not contain |
 | 2026-09-08 | Cross-encoder reranking NOT adopted | MS MARCO single-hop relevance training actively hurts multi-hop both@2 (0.554 → 0.468 at N=5), breaking ~2x more questions than it fixes, at ~1000x the latency |
 | 2026-09-08 | Reranker device `mps` | Measured 2.38x faster than CPU (317 vs 133 pairs/sec), exact repeatability, identical top-1/2/3 on 100 real questions |
 | 2026-09-08 | No cross-encoder score cache | Cache key is the (query, passage) pair; every question has a distinct query, so there is no cross-question reuse to exploit |
