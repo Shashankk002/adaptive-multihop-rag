@@ -380,10 +380,74 @@ an upper bound on true error, and 0.809 a lower bound on true accuracy.** Two di
 models produced the same pattern independently, which points to a labelling artifact
 rather than a model quirk.
 
-### Phase 8 — Self-correction loop
-On verification failure, reformulate and re-retrieve, under a hop/iteration budget.
+### Phase 8A — Self-correction: selective evidence expansion ✅ deterministic result
+On verification failure, widen the evidence set, under a fixed budget.
 **Acceptance:** measurable gain over Phase 6 on the same questions; terminates within
 budget on every question; no infinite loops.
+
+**What the mechanism is — and is not.** When the Phase 7 verifier returns
+INSUFFICIENT, the evidence set is expanded from the top 2 to the top 5 of the
+*existing* ranked candidate list. When it returns SUFFICIENT, the top 2 are kept.
+
+This is **selective evidence expansion over a fixed candidate set, not query
+reformulation and not new retrieval.** HotpotQA distractor gives each question its own
+~10 candidate paragraphs and every gold paragraph is always among them, so there is no
+new document to fetch. On the 201 questions flagged INSUFFICIENT, the missing gold
+paragraph sat at rank 3 in 32.1% of cases, within the top 5 in 66.7%, and within the
+top 10 in **100%**. "Re-retrieve" is not available in this setting; looking deeper into
+the ranking we already hold is.
+
+One correction round. No loop, no iteration budget, no cycle detection: with a fixed
+candidate set a second round can reach nothing a larger k does not already reach, so
+termination is structural rather than enforced.
+
+**Development result (verify_tune, 486 usable cached verdicts):**
+
+| system | gold-pair | vs base | mean evidence | recoveries | regressions |
+|---|---|---|---|---|---|
+| baseline (top-2) | 0.588 | — | 2.00 | — | — |
+| verifier-triggered k=3 | 0.689 | +0.101 | 2.41 | 49 | 0 |
+| verifier-triggered k=4 | 0.755 | +0.167 | 2.83 | 81 | 0 |
+| **verifier-triggered k=5** | **0.796** | **+0.208** | **3.24** | **101** | **0** |
+
+**Expansion rate 41.4%** (201/486). **Wasted expansion 23.4%** (47/201) — questions
+expanded whose evidence was already complete. That is the verifier's false-alarm rate
+(0.164 of gold-SUFFICIENT cases) expressed as a concrete cost: 47 questions carry three
+paragraphs they did not need.
+
+**Zero regressions is structural, not luck.** Expansion returns a superset of the
+baseline top-2, so a question that was already correct cannot become incorrect. This is
+a property of the mechanism and should not be read as evidence of its quality.
+
+By type: **bridge 0.515 → 0.756 (+0.241)**, comparison 0.885 → 0.958 (+0.073). The
+multi-hop hard case that has driven every phase since Phase 2 gains most; comparison was
+already near ceiling.
+
+**Cost: zero additional LLM calls.** Correction consumes the verdict Phase 7 already
+produced; the correction step itself is ~1 microsecond/question. Total pipeline cost
+stays at 1 LLM call and 1.42 s per question, against the 12-call ceiling.
+
+`CORRECTION_K = 5` is frozen for now. **This is a TUNE/development result, not a
+held-out evaluation**: the 486 questions are development data, `k` was selected on this
+same sweep, and the Phase 7 verifier was itself evaluated here. It is not directly
+comparable to the Phase 6 DEV-EVAL figure of 0.586.
+
+**Key limitation — the gain is measured on the wrong axis for the end task.** Gold-pair
+recall rises substantially, but **mean evidence size rises 62% (2.00 → 3.24
+paragraphs)**. Retrieval recall is not answer quality: more context also means more
+distractors for a reader to be misled by. **Phase 9 must determine whether the extra
+context actually improves grounded answer quality**, and if it does not, `CORRECTION_K`
+should be re-selected against answer EM/F1 rather than against gold-pair recall. For
+reference, blanket expansion to k=3 reaches 0.730 at 3.00 paragraphs, so verifier
+triggering buys +0.066 for 0.24 more paragraphs — real, but not overwhelming on this
+axis alone.
+
+### Phase 8B — LLM-based correction (not started)
+Deferred. A single re-ranking call over the unselected candidates, using the verifier's
+stated reason, would target precision rather than recall — reaching similar gold-pair
+recall at a smaller evidence set. Not built: the deterministic baseline must be beaten
+before a second LLM call is justified, and Phases 4 and 5 both showed that adding a
+component on the assumption it helps produces negative results.
 
 ### Phase 9 — Grounded answer generation + final evaluation
 Answers constrained to verified evidence, with citations.
@@ -448,6 +512,10 @@ optimization beyond honest measurement.
 | 2026-09-09 | Verdict cache is the reproducibility mechanism | Gemini model ids are moving aliases and cannot be pinned to a revision the way `bge-small` was |
 | 2026-09-09 | Frozen 500-question verifier split, stratified | A prefix of TUNE would have shifted the bridge/comparison ratio to 77.8%; the stratified draw holds 80.6% |
 | 2026-09-09 | Confidence NOT used for routing | 93.8% of verdicts report 1.00; correct-vs-wrong confidence differs by 0.011 |
+| 2026-09-09 | Correction is evidence expansion, not re-retrieval | The candidate set is fixed per question and always contains both gold paragraphs; on flagged questions the missing paragraph is within the top 10 in 100% of cases |
+| 2026-09-09 | One correction round, no loop | With a fixed candidate set, a second round reaches nothing a larger k does not; termination is structural |
+| 2026-09-09 | CORRECTION_K = 5, frozen on TUNE | +0.208 gold-pair over baseline at 3.24 mean paragraphs; to be re-selected against answer quality in Phase 9 |
+| 2026-09-09 | LLM re-ranker (Phase 8B) deferred | The free deterministic baseline must be beaten before spending a second LLM call |
 | 2026-09-09 | Verifier adopted over m23 for Phase 8 | +0.216 F1 and +0.280 recall on the same 486 questions, at 1.42 s/question |
 | 2026-09-08 | Routed 2-hop retrieval adopted as default | +0.031 both@2 on DEV-EVAL (0.554 → 0.586), McNemar p=2e-13, at 3.66 ms/q |
 | 2026-09-08 | Routing on `m23`, not keyword rules | Beats hand-tuned keyword rules (0.586 vs 0.577/0.583) with no linguistic assumptions, and should transfer to datasets without a bridge/comparison dichotomy |
