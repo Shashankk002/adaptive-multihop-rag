@@ -67,10 +67,27 @@ scores on a hand-built fixture with a hand-computed answer.
 *Eval comes before retrieval on purpose. Building the scoreboard first means every
 subsequent phase is measured rather than assumed to have helped.*
 
-### Phase 2 — BM25 retrieval (baseline)
+### Phase 2 — BM25 retrieval (baseline) ✅
 Sparse retrieval over the distractor candidate set.
 **Acceptance:** recorded recall@k on SMOKE and DEV. This becomes the baseline row in
 the results table.
+
+**Results (query = the full question, DEV n=7255):**
+
+| k | recall@k | both@k |
+|---|---|---|
+| 1 | 0.413 | 0.000 |
+| 2 | 0.624 | **0.320** |
+| 3 | 0.726 | 0.486 |
+| 5 | 0.837 | 0.685 |
+
+`both@2` = **0.320** is the Phase 2 baseline. SMOKE (n=100) gives 0.300, within noise
+of DEV. By type: bridge 0.329, comparison 0.280. Retrieval costs 0.19 ms/question.
+
+`recall@10` and `both@10` are not reported: every question has exactly 2 gold
+paragraphs and both are always among the ≤10 candidates, so any metric at k=10 is
+identically 1.0 and measures the dataset, not the retriever. `both@1` is likewise
+degenerate at 0.0 — two gold paragraphs cannot fit in one slot.
 
 ### Phase 3 — Dense retrieval
 Embedding-based retrieval behind the same interface as BM25.
@@ -150,3 +167,8 @@ optimization beyond honest measurement.
 | 2026-09-08 | No `configs/` or `scripts/` yet | Added when a real need appears, not speculatively |
 | 2026-09-08 | Eval harness before retrieval (Phase 1 before 2) | Every later phase must be measurable against a baseline |
 | 2026-09-08 | No frameworks (LangChain et al.) | The orchestration is the research contribution; a framework hides it |
+| 2026-09-08 | Hand-written BM25, no `rank_bm25` | Corpus is 10 paragraphs per question, so no library performance argument applies; keeps the IDF choice explicit |
+| 2026-09-08 | IDF = `log(1 + (N-df+0.5)/(df+0.5))` | The textbook Okapi form goes negative for any term in >half of a 10-document corpus, penalising a paragraph for containing a query word |
+| 2026-09-08 | Index `title + body` | 65.3% of questions name a gold title verbatim; body-only is kept as a clean future ablation |
+| 2026-09-08 | `both@2` is the headline retrieval metric | A multi-hop question is unanswerable from one of its two gold paragraphs |
+| 2026-09-08 | Paragraph-level retrieval metrics kept separate from the harness | The harness scores sentences; conflating the two levels would blur both |

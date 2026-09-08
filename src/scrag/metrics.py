@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import string
 from collections import Counter
-from typing import Iterable, NamedTuple
+from typing import Iterable, NamedTuple, Sequence
 
 from scrag.schema import SupportingFact
 
@@ -94,3 +94,40 @@ def _as_pair(fact: Fact) -> tuple[str, int]:
     if isinstance(fact, SupportingFact):
         return (fact.title, fact.sent_id)
     return tuple(fact)
+
+
+# --- Retrieval metrics -----------------------------------------------------------
+# Paragraph-level, and deliberately separate from the answer and supporting-fact
+# metrics above: those score sentences, these score which paragraphs were retrieved.
+
+
+def recall_at_k(retrieved: Sequence[str], gold: Iterable[str], k: int) -> float:
+    """Fraction of gold paragraph titles found in the top k."""
+    gold_set = set(gold)
+    if not gold_set:
+        return 0.0
+    return len(gold_set & set(retrieved[:k])) / len(gold_set)
+
+
+def all_gold_at_k(retrieved: Sequence[str], gold: Iterable[str], k: int) -> float:
+    """1.0 if every gold paragraph is in the top k, else 0.0.
+
+    At k=2 this is the headline Phase 2 number: a multi-hop question cannot be
+    answered from one of its two gold paragraphs.
+    """
+    gold_set = set(gold)
+    if not gold_set:
+        return 0.0
+    return float(gold_set <= set(retrieved[:k]))
+
+
+def first_missed_gold_rank(
+    retrieved: Sequence[str], gold: Iterable[str], k: int
+) -> int | None:
+    """1-based rank of the best-ranked gold paragraph that fell outside the top k,
+    or None if none were missed. Says how near a miss was."""
+    gold_set = set(gold)
+    for rank, title in enumerate(retrieved[k:], start=k + 1):
+        if title in gold_set:
+            return rank
+    return None
