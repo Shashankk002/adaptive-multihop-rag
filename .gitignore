@@ -1,0 +1,41 @@
+# Environments
+.venv/
+venv/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data — never commit datasets or built indexes.
+# Ignore directory *contents*, not the directories, so .gitkeep survives.
+data/**
+!data/raw/
+!data/processed/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Build artifacts of retrieval stages
+indexes/
+*.faiss
+*.pkl
+
+# Experiment outputs
+runs/
+results/
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+
+CLAUDE.md
+

@@ -1,0 +1,34 @@
+[project]
+name = "scrag"
+version = "0.0.0"
+description = "Self-Correcting Multi-Hop RAG — an experimental retrieval pipeline with evidence verification and self-correction."
+requires-python = ">=3.12,<3.13"
+
+# Dependencies are added phase by phase, never speculatively.
+# Nothing is installed without explicit approval. See CLAUDE.md.
+dependencies = []
+
+[project.optional-dependencies]
+# Tooling only — never runtime dependencies. Install with:
+#   .venv/bin/python -m pip install -e ".[dev]"
+dev = [
+    "pytest>=9.1,<10",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Make `.venv/bin/python -m pytest` work from a bare checkout, before the package
+# has been installed. With an editable install this is simply redundant.
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
