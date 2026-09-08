@@ -89,10 +89,45 @@ paragraphs and both are always among the ≤10 candidates, so any metric at k=10
 identically 1.0 and measures the dataset, not the retriever. `both@1` is likewise
 degenerate at 0.0 — two gold paragraphs cannot fit in one slot.
 
-### Phase 3 — Dense retrieval
+### Phase 3 — Dense retrieval ✅
 Embedding-based retrieval behind the same interface as BM25.
 **Acceptance:** recall@k reported next to BM25; the two are swappable without changes
 to calling code.
+
+**Setup:** `BAAI/bge-small-en-v1.5` @ `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`,
+384-dim, device `mps`, query prefix applied, same `title + body` text as BM25.
+Resolved versions: sentence-transformers 6.0.1, torch 2.14.0, numpy 2.5.3,
+transformers 5.16.1, Python 3.12.4.
+
+**Results (query = the full question, DEV n=7255):**
+
+| retriever | recall@1 | recall@2 | recall@3 | recall@5 | both@2 | ms/q |
+|---|---|---|---|---|---|---|
+| BM25 | 0.413 | 0.624 | 0.726 | 0.837 | 0.320 | 0.22 |
+| **Dense** | **0.454** | **0.762** | **0.855** | **0.926** | **0.554** | 0.07 |
+
+`both@2` improves **+0.234 (0.320 → 0.554)**. By type: bridge 0.329 → 0.474,
+comparison 0.280 → **0.885**. Nearly all of the comparison gap closes, because both
+entities are named in the question and semantic matching finds them; bridge questions
+remain the hard case, exactly as predicted. Questions missing a gold paragraph at k=2
+fall from 68.0% to 44.6%.
+
+Timing is cache-served (0.07 ms/q); the one-off embedding pass over 74,040 unique
+texts took 6.6 min on MPS.
+
+**BM25 ↔ dense overlap (motivates Phase 4):**
+
+| | share of DEV |
+|---|---|
+| both retrievers succeed at both@2 | 21.3% |
+| BM25 only | 10.7% |
+| dense only | 34.2% |
+| neither | 33.9% |
+
+Oracle fusion ceiling at k=2 is **0.661** against the best single retriever's 0.554 —
+**+0.107 of headroom**. The 10.7% BM25-only column is the important one: sparse
+retrieval still finds questions dense misses, so hybrid is motivated by evidence
+rather than by assumption.
 
 ### Phase 4 — Hybrid retrieval
 Score fusion of sparse and dense.
@@ -152,7 +187,6 @@ optimization beyond honest measurement.
 
 ## Open questions
 
-- Embedding model for Phase 3 — deferred to Phase 3.
 - Which LLM backs verification and generation, and whether one model does both —
   deferred to Phase 7.
 - Whether hop count is fixed or dynamically decided — deferred to Phase 6.
@@ -172,3 +206,9 @@ optimization beyond honest measurement.
 | 2026-09-08 | Index `title + body` | 65.3% of questions name a gold title verbatim; body-only is kept as a clean future ablation |
 | 2026-09-08 | `both@2` is the headline retrieval metric | A multi-hop question is unanswerable from one of its two gold paragraphs |
 | 2026-09-08 | Paragraph-level retrieval metrics kept separate from the harness | The harness scores sentences; conflating the two levels would blur both |
+| 2026-09-08 | Dense model `BAAI/bge-small-en-v1.5` | 512-token context (only 0.15% of paragraphs truncated vs 4.0% for MiniLM's 256), asymmetric-retrieval training, 33M params runs comfortably on an 8 GB M3 |
+| 2026-09-08 | NumPy dot product, no FAISS | ~10 candidates per question; an ANN index would be pure ceremony |
+| 2026-09-08 | Device `mps` | Measured 2.5x faster than CPU (202 vs 81 texts/sec) with byte-identical top-1/2/3 rankings on 100 real questions |
+| 2026-09-08 | SHA1-keyed `.npz` embedding cache | A DEV sweep costs ~15 min uncached; identity is the exact indexed text, so ablations cannot collide. 120 MB, gitignored, rebuilt not committed |
+| 2026-09-08 | Embeddings L2-normalised at encode time | Makes cosine a dot product, and bounds scores in [-1,1] for Phase 4 fusion |
+| 2026-09-08 | Batch composition perturbs embeddings at ~1e-7 | Same input in batches of 32 vs 10 differs slightly (padding changes float reduction order). Cannot reorder top-k, but reproducibility holds to ~1e-7, not bitwise |

@@ -6,7 +6,12 @@ requires-python = ">=3.12,<3.13"
 
 # Dependencies are added phase by phase, never speculatively.
 # Nothing is installed without explicit approval. See CLAUDE.md.
-dependencies = []
+# Versions are deliberately unpinned for now; the resolved set is recorded in
+# PROJECT_PLAN.md alongside the Phase 3 results.
+dependencies = [
+    "sentence-transformers",  # dense embeddings (Phase 3)
+    "numpy",                  # embedding maths and the embedding cache
+]
 
 [project.optional-dependencies]
 # Tooling only — never runtime dependencies. Install with:
