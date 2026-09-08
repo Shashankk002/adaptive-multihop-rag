@@ -177,10 +177,57 @@ retriever, two DEV-tuned hyperparameters, and a regression on comparison questio
 `hybrid_retrieve` stays in the codebase for reuse in later phases, where fusion over
 better inputs (reranked or multi-hop candidates) may pay off more.
 
-### Phase 5 — Reranking
-Cross-encoder reranking over the fused candidates.
+### Phase 5 — Reranking ❌ negative result; reranker not adopted
+Cross-encoder reranking of the dense shortlist.
 **Acceptance:** precision@k improves at fixed recall; added latency measured and
 reported.
+
+**Setup:** `cross-encoder/ms-marco-MiniLM-L-6-v2` @ `233902d25c440f23af6f7d6e94d2946bac0bee0a`,
+22.7M params, 512 context, device `mps`, raw question (no bge prefix) paired with the
+same `title + body` text. Reranked top-N placed above the untouched dense tail, so
+recall@5 stays defined at N=3.
+
+**A cross-encoder makes multi-hop retrieval worse at every depth (DEV n=7255):**
+
+| retriever | recall@1 | recall@2 | recall@3 | recall@5 | both@2 | vs dense |
+|---|---|---|---|---|---|---|
+| Dense | 0.454 | 0.762 | 0.855 | 0.926 | **0.554** | — |
+| Rerank N=3 | 0.460 | 0.729 | 0.855 | 0.926 | 0.489 | −0.065 |
+| Rerank N=5 | 0.459 | 0.719 | 0.803 | 0.926 | 0.468 | −0.087 |
+| Rerank N=10 | 0.459 | 0.713 | 0.792 | 0.866 | 0.457 | −0.098 |
+
+**The reranker is working correctly** — mean gold score +2.814 vs distractor −1.799,
+and the top-scoring paragraph is gold in 43/50 sampled questions. It also improves
+**recall@1** (0.454 → 0.460): it is *better* than dense at identifying the single most
+relevant paragraph. It is worse at everything that requires both.
+
+**Why: MS MARCO trains single-hop relevance.** The cross-encoder confidently promotes
+the paragraph that directly matches the question, then ranks the second (bridge)
+paragraph below topically-similar distractors, because the bridge paragraph is not
+relevant to the question text — it is relevant only via the entity the first paragraph
+supplies. Deeper shortlists give it more distractors to mis-promote, so the damage
+grows monotonically with N.
+
+Case A / Case B, and recovery vs regression:
+
+| N | Case B | conditional recovery | Case A | recoveries | regressions | reg/rec | net |
+|---|---|---|---|---|---|---|---|
+| 3 | 1232 | 36.6% | 2002 | 451 | 925 | 2.05 | −474 |
+| 5 | 2190 | 25.8% | 1044 | 564 | 1193 | 2.12 | −629 |
+| 10 | 3234 | 18.0% | 0 | 583 | 1291 | 2.21 | −708 |
+
+Reranking genuinely recovers 18–37% of reachable failures, but breaks roughly twice as
+many questions it was already winning (McNemar z = 12.8–16.3, all p ≪ 0.001). It
+changes the dense top-2 on 32–46% of questions and moves gold paragraphs **down** more
+often than up (N=5: 2266 up, 3263 down). Comparison questions suffer most
+(0.885 → 0.739 at N=5), mirroring the Phase 4 failure mode.
+
+**Cost:** 72,208 pairs in 8.8 min on MPS (136 pairs/sec) — roughly 73 ms/question live,
+against dense's 0.07 ms cache-served. About **1000x the latency for a negative result.**
+
+**Decision: do not adopt the cross-encoder.** `rerank.py` is retained; a reranker may
+help in Phase 6 once queries are decomposed into single-hop sub-questions, which is
+the shape this model was actually trained for.
 
 ### Phase 6 — Multi-hop retrieval
 Query decomposition and iterative hop-by-hop retrieval.
@@ -256,5 +303,8 @@ optimization beyond honest measurement.
 | 2026-09-08 | Embeddings L2-normalised at encode time | Makes cosine a dot product, and bounds scores in [-1,1] for Phase 4 fusion |
 | 2026-09-08 | RRF over complete rankings, not truncated lists | Both retrievers already score all ~10 candidates; truncation adds a hyperparameter and creates a missing-document case that otherwise cannot arise |
 | 2026-09-08 | `rrf_k` swept, not fixed at the published 60 | Over 10 candidates, k=60 spans weights of only 1/61–1/70 and flattens RRF into "average rank"; DEV curve peaks at 3 |
+| 2026-09-08 | Cross-encoder reranking NOT adopted | MS MARCO single-hop relevance training actively hurts multi-hop both@2 (0.554 → 0.468 at N=5), breaking ~2x more questions than it fixes, at ~1000x the latency |
+| 2026-09-08 | Reranker device `mps` | Measured 2.38x faster than CPU (317 vs 133 pairs/sec), exact repeatability, identical top-1/2/3 on 100 real questions |
+| 2026-09-08 | No cross-encoder score cache | Cache key is the (query, passage) pair; every question has a distinct query, so there is no cross-question reuse to exploit |
 | 2026-09-08 | Hybrid NOT adopted as default; dense retained | Unweighted RRF loses 0.554 → 0.507; best weighted variant gains only +0.017 for two tuned hyperparameters and a comparison-question regression |
 | 2026-09-08 | Batch composition perturbs embeddings at ~1e-7 | Same input in batches of 32 vs 10 differs slightly (padding changes float reduction order). Cannot reorder top-k, but reproducibility holds to ~1e-7, not bitwise |
