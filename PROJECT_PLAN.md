@@ -129,10 +129,53 @@ Oracle fusion ceiling at k=2 is **0.661** against the best single retriever's 0.
 retrieval still finds questions dense misses, so hybrid is motivated by evidence
 rather than by assumption.
 
-### Phase 4 — Hybrid retrieval
-Score fusion of sparse and dense.
+### Phase 4 — Hybrid retrieval ⚠️ largely negative
+Reciprocal Rank Fusion of the complete BM25 and dense rankings.
 **Acceptance:** beats the better of its two components on recall@k, or the negative
 result is recorded and hybrid is dropped.
+
+**Unweighted RRF loses to dense at every rrf_k.** DEV n=7255, selection metric both@2:
+
+| rrf_k | recall@1 | recall@2 | recall@3 | recall@5 | both@2 | vs dense |
+|---|---|---|---|---|---|---|
+| 0 | 0.457 | 0.736 | 0.856 | 0.933 | 0.494 | −0.060 |
+| 1 | 0.458 | 0.741 | 0.853 | 0.932 | 0.502 | −0.052 |
+| 2 | 0.458 | 0.741 | 0.849 | 0.931 | 0.504 | −0.050 |
+| 3 | 0.457 | 0.742 | 0.847 | 0.931 | **0.507** | −0.047 |
+| 5 | 0.458 | 0.737 | 0.843 | 0.929 | 0.501 | −0.053 |
+| 10 | 0.457 | 0.733 | 0.835 | 0.926 | 0.493 | −0.061 |
+| 20 | 0.456 | 0.730 | 0.830 | 0.923 | 0.489 | −0.065 |
+| 60 | 0.456 | 0.730 | 0.827 | 0.918 | 0.488 | −0.066 |
+
+The curve is shallow and peaks at rrf_k=3, confirming that the published default of 60
+is mis-scaled for 10-candidate lists — but no constant rescues the method. At rrf_k=3
+hybrid recovers 66.5% of the BM25-only slice yet keeps only 54.7% of the dense-only
+slice: 777 recoveries against **1123 regressions**, net −346 questions. Comparison
+questions are hit hardest (dense 0.885 → hybrid 0.676) because equal weighting lets a
+retriever scoring 0.280 on that slice outvote one scoring 0.885.
+
+**Weighted RRF (dense weight w) recovers a small real gain**, run only because the
+unweighted result triggered the pre-agreed condition:
+
+| w | rrf_k=1 | rrf_k=2 | rrf_k=3 | rrf_k=5 |
+|---|---|---|---|---|
+| 0.5 | 0.502 | 0.504 | 0.507 | 0.501 |
+| 0.6 | 0.550 | 0.553 | 0.548 | 0.542 |
+| 0.7 | **0.571** | 0.567 | 0.565 | 0.557 |
+| 0.8 | 0.564 | 0.563 | 0.563 | 0.560 |
+| 0.9 | 0.554 | 0.554 | 0.554 | 0.554 |
+
+Best: **w=0.7, rrf_k=1 → both@2 = 0.571 (+0.017 over dense)**. Paired analysis: 317
+recoveries vs 197 regressions, net +120 questions, McNemar z=5.25 (p<0.0001) — real,
+not noise. recall@1 0.456 / @2 0.774 / @3 0.872 / @5 0.938. Bridge improves
+0.474 → 0.500; comparison *degrades* 0.885 → 0.863. Captures 15.7% of the oracle
+headroom (oracle 0.661).
+
+**Decision: keep dense as the default retriever; do not adopt hybrid.** +0.017 is only
+marginally above the ~+0.015 line agreed in advance, and buying it costs a second
+retriever, two DEV-tuned hyperparameters, and a regression on comparison questions.
+`hybrid_retrieve` stays in the codebase for reuse in later phases, where fusion over
+better inputs (reranked or multi-hop candidates) may pay off more.
 
 ### Phase 5 — Reranking
 Cross-encoder reranking over the fused candidates.
@@ -211,4 +254,7 @@ optimization beyond honest measurement.
 | 2026-09-08 | Device `mps` | Measured 2.5x faster than CPU (202 vs 81 texts/sec) with byte-identical top-1/2/3 rankings on 100 real questions |
 | 2026-09-08 | SHA1-keyed `.npz` embedding cache | A DEV sweep costs ~15 min uncached; identity is the exact indexed text, so ablations cannot collide. 120 MB, gitignored, rebuilt not committed |
 | 2026-09-08 | Embeddings L2-normalised at encode time | Makes cosine a dot product, and bounds scores in [-1,1] for Phase 4 fusion |
+| 2026-09-08 | RRF over complete rankings, not truncated lists | Both retrievers already score all ~10 candidates; truncation adds a hyperparameter and creates a missing-document case that otherwise cannot arise |
+| 2026-09-08 | `rrf_k` swept, not fixed at the published 60 | Over 10 candidates, k=60 spans weights of only 1/61–1/70 and flattens RRF into "average rank"; DEV curve peaks at 3 |
+| 2026-09-08 | Hybrid NOT adopted as default; dense retained | Unweighted RRF loses 0.554 → 0.507; best weighted variant gains only +0.017 for two tuned hyperparameters and a comparison-question regression |
 | 2026-09-08 | Batch composition perturbs embeddings at ~1e-7 | Same input in batches of 32 vs 10 differs slightly (padding changes float reduction order). Cannot reorder top-k, but reproducibility holds to ~1e-7, not bitwise |
