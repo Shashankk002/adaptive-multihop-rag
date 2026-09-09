@@ -6,9 +6,9 @@ import math
 
 import pytest
 
-from scrag.metrics import all_gold_at_k, first_missed_gold_rank, recall_at_k
-from scrag.retrieval import B, K1, bm25_retrieve, bm25_scores, indexed_text, tokenize
-from scrag.schema import Example, Paragraph
+from amrag.metrics import all_gold_at_k, first_missed_gold_rank, recall_at_k
+from amrag.retrieval import B, K1, bm25_retrieve, bm25_scores, indexed_text, tokenize
+from amrag.schema import Example, Paragraph
 
 
 def make_example(*paragraphs: tuple[str, list[str]]) -> Example:

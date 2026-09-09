@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from scrag import verify
-from scrag.verify import Verdict, append_cache, build_prompt, cache_key, load_cache
-from scrag.schema import Paragraph
+from amrag import verify
+from amrag.verify import Verdict, append_cache, build_prompt, cache_key, load_cache
+from amrag.schema import Paragraph
 
 PARAGRAPHS = [
     Paragraph("Tim Burton", ("He directed Ed Wood.",)),

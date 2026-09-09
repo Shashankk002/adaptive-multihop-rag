@@ -12,7 +12,7 @@ import string
 from collections import Counter
 from typing import Iterable, NamedTuple, Sequence
 
-from scrag.schema import SupportingFact
+from amrag.schema import SupportingFact
 
 # HotpotQA scores these answers all-or-nothing. Without this, predicting "yes" against
 # the gold answer "yes he did" would earn partial F1 credit for a wrong yes/no call.

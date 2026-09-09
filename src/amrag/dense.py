@@ -17,8 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
-from scrag.retrieval import Scored, indexed_text
-from scrag.schema import Example
+from amrag.retrieval import Scored, indexed_text
+from amrag.schema import Example
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"

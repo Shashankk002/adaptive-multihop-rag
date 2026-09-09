@@ -19,8 +19,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
-from scrag.schema import Paragraph
-from scrag.verify import retry_after  # shared parsing of Google's RetryInfo hint
+from amrag.schema import Paragraph
+from amrag.verify import retry_after  # shared parsing of Google's RetryInfo hint
 
 MODEL = "gemini-3.1-flash-lite"
 PROMPT_VERSION = "v1"

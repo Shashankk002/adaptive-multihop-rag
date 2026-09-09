@@ -15,8 +15,8 @@ depends on the seed and the set of ids, not on the order they appear in the file
 
 Generate or verify from the command line:
 
-    .venv/bin/python -m scrag.splits generate
-    .venv/bin/python -m scrag.splits verify
+    .venv/bin/python -m amrag.splits generate
+    .venv/bin/python -m amrag.splits verify
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from scrag.data_loader import load_hotpotqa
-from scrag.schema import Example, QuestionType
+from amrag.data_loader import load_hotpotqa
+from amrag.schema import Example, QuestionType
 
 # --------------------------------------------------------------------------------
 # Frozen parameters. Changing any of these invalidates every result ever reported

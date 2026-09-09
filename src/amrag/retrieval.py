@@ -15,7 +15,7 @@ import re
 from collections import Counter
 from typing import Callable, NamedTuple, Sequence
 
-from scrag.schema import Example, Paragraph
+from amrag.schema import Example, Paragraph
 
 K1 = 1.5  # term-frequency saturation
 B = 0.75  # length normalisation strength

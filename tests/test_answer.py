@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from scrag import answer as ans
-from scrag.answer import Answer, AnswerError, append_cache, build_prompt, cache_key, load_cache
-from scrag.schema import Paragraph
+from amrag import answer as ans
+from amrag.answer import Answer, AnswerError, append_cache, build_prompt, cache_key, load_cache
+from amrag.schema import Paragraph
 
 PARAGRAPHS = [
     Paragraph("Ed Wood (film)", ("A 1994 film directed by Tim Burton.",)),

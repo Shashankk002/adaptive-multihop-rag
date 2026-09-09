@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from scrag.metrics import answer_f1, exact_match, normalize_answer, supporting_fact_prf
-from scrag.schema import SupportingFact
+from amrag.metrics import answer_f1, exact_match, normalize_answer, supporting_fact_prf
+from amrag.schema import SupportingFact
 
 
 class TestNormalization:

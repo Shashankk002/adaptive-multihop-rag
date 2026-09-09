@@ -7,13 +7,13 @@ import json
 
 import pytest
 
-from scrag.data_loader import (
+from amrag.data_loader import (
     HotpotQAFormatError,
     load_hotpotqa,
     load_hotpotqa_with_report,
     parse_hotpotqa,
 )
-from scrag.schema import QuestionType
+from amrag.schema import QuestionType
 
 
 class TestFieldPreservation:

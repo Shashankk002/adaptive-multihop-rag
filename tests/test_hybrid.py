@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-from scrag import dense, hybrid
-from scrag.hybrid import hybrid_retrieve, rrf_scores
-from scrag.schema import Example, Paragraph
+from amrag import dense, hybrid
+from amrag.hybrid import hybrid_retrieve, rrf_scores
+from amrag.schema import Example, Paragraph
 
 from tests.test_dense import fake_encode
 

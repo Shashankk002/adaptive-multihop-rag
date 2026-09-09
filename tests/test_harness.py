@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from scrag.data_loader import parse_hotpotqa
-from scrag.harness import Prediction, aggregate, evaluate
+from amrag.data_loader import parse_hotpotqa
+from amrag.harness import Prediction, aggregate, evaluate
 
 
 @pytest.fixture

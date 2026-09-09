@@ -1,5 +1,10 @@
 """Hybrid retrieval: Reciprocal Rank Fusion of BM25 and dense rankings.
 
+EVALUATED AND REJECTED — not part of the pipeline. Unweighted fusion scored 0.507
+both@2 against dense retrieval's 0.554; a weighted variant recovered only +0.017 for
+two tuned hyperparameters. Retained so the negative result stays reproducible. See
+PROJECT_PLAN.md, Phase 4.
+
 RRF combines rankings rather than scores, which sidesteps the fact that BM25 scores are
 unbounded and corpus-dependent while cosine scores live in [-1, 1]. No normalisation
 step, no calibration, one parameter.
@@ -12,9 +17,9 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from scrag.dense import dense_retrieve
-from scrag.retrieval import Scored, bm25_retrieve
-from scrag.schema import Example
+from amrag.dense import dense_retrieve
+from amrag.retrieval import Scored, bm25_retrieve
+from amrag.schema import Example
 
 DEFAULT_RRF_K = 1
 """Chosen by sweeping DEV both@2; see PROJECT_PLAN.md.

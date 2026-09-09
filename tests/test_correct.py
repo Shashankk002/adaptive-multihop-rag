@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from scrag.correct import BASELINE_K, CORRECTION_K, select_evidence
-from scrag.retrieval import Scored
-from scrag.schema import Paragraph
-from scrag.verify import Verdict
+from amrag.correct import BASELINE_K, CORRECTION_K, select_evidence
+from amrag.retrieval import Scored
+from amrag.schema import Paragraph
+from amrag.verify import Verdict
 
 RANKED = [Scored(Paragraph(f"P{i}", (f"body {i}",)), 1.0 - i / 10) for i in range(10)]
 

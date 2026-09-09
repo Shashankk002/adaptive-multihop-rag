@@ -1,7 +1,7 @@
 """HotpotQA (distractor setting) loading.
 
 This is the only module that understands HotpotQA's on-disk shape. It reads the
-official JSON and produces `scrag.schema` records; everything downstream is
+official JSON and produces `amrag.schema` records; everything downstream is
 dataset-agnostic. To add 2WikiMultihopQA or MuSiQue later, add a sibling loader —
 do not generalise this one.
 
@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from scrag.schema import Example, Paragraph, QuestionType, SupportingFact
+from amrag.schema import Example, Paragraph, QuestionType, SupportingFact
 
 
 class HotpotQAFormatError(ValueError):

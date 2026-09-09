@@ -1,5 +1,11 @@
 """Cross-encoder reranking of the dense shortlist.
 
+EVALUATED AND REJECTED — not part of the pipeline. Reranking made retrieval worse at
+every depth (0.554 -> 0.468 both@2 at N=5): the model is trained on MS MARCO
+single-hop relevance, so it buries the bridge paragraph, which is relevant only via
+the first. Retained so the negative result stays reproducible. See PROJECT_PLAN.md,
+Phase 5.
+
 The bi-encoder in `dense.py` embeds question and paragraph separately, so paragraph
 vectors can be precomputed. A cross-encoder instead reads the pair together and emits
 one relevance score, which is more accurate and far more expensive — nothing can be
@@ -12,9 +18,9 @@ used for ranking only, which is all our metrics consume.
 
 from __future__ import annotations
 
-from scrag.dense import dense_retrieve
-from scrag.retrieval import Scored, indexed_text
-from scrag.schema import Example
+from amrag.dense import dense_retrieve
+from amrag.retrieval import Scored, indexed_text
+from amrag.schema import Example
 
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 MODEL_REVISION = "233902d25c440f23af6f7d6e94d2946bac0bee0a"

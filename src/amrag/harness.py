@@ -2,7 +2,7 @@
 
 Runs a pipeline over a set of examples and scores each answer. The harness knows
 nothing about retrieval, verification, or LLMs — a pipeline is just a function from an
-Example to a Prediction. That is what lets BM25, dense, hybrid, and the self-correcting
+Example to a Prediction. That is what lets BM25, dense, hybrid, and the full adaptive
 pipeline all be measured by the same code.
 
     def my_pipeline(example: Example) -> Prediction:
@@ -18,8 +18,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
-from scrag.metrics import answer_f1, exact_match, supporting_fact_prf
-from scrag.schema import Example, SupportingFact
+from amrag.metrics import answer_f1, exact_match, supporting_fact_prf
+from amrag.schema import Example, SupportingFact
 
 Fact = SupportingFact | tuple[str, int]
 

@@ -11,9 +11,9 @@ exactly two gold paragraphs, so a third hop would be solving a problem that is n
 
 from __future__ import annotations
 
-from scrag.dense import dense_retrieve
-from scrag.retrieval import Scored, bm25_scores, indexed_text
-from scrag.schema import Example, Paragraph
+from amrag.dense import dense_retrieve
+from amrag.retrieval import Scored, bm25_scores, indexed_text
+from amrag.schema import Example, Paragraph
 
 DEFAULT_EXPANSION = "paragraph"
 

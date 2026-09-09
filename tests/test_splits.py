@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from scrag import splits
-from scrag.schema import Example, Paragraph, QuestionType
-from scrag.splits import (
+from amrag import splits
+from amrag.schema import Example, Paragraph, QuestionType
+from amrag.splits import (
     SplitError,
     VERIFY_TUNE_PER_TYPE,
     VERIFY_TUNE_SIZE,
@@ -144,7 +144,7 @@ class TestFrozenArtifact:
             pytest.skip("dataset not downloaded")
         from collections import Counter
 
-        from scrag.data_loader import load_hotpotqa
+        from amrag.data_loader import load_hotpotqa
 
         by_id = {e.qid: e for e in load_hotpotqa(dataset)}
         counts = Counter(by_id[qid].question_type.value for qid in frozen.ids)
@@ -272,7 +272,7 @@ class TestAnswerDevArtifact:
             pytest.skip("dataset not downloaded")
         from collections import Counter
 
-        from scrag.data_loader import load_hotpotqa
+        from amrag.data_loader import load_hotpotqa
 
         by_id = {e.qid: e for e in load_hotpotqa(dataset)}
         counts = Counter(by_id[qid].question_type.value for qid in frozen.ids)
@@ -289,3 +289,32 @@ class TestAnswerDevArtifact:
         )
         with pytest.raises(SplitError, match="outside verify_tune"):
             splits.write_answer_dev_split(tune, [e.qid for e in tune], splits_dir=tmp_path)
+
+
+class TestExclusionSplits:
+    """DEV and DEV-EVAL have no id file — these functions *are* their definition,
+    so the definition itself needs a test."""
+
+    def test_dev_is_everything_outside_test(self, tune):
+        held_out = {tune[0].qid, tune[1].qid}
+        dev = splits.dev_ids(tune, held_out)
+
+        assert set(dev) == {e.qid for e in tune} - held_out
+        assert dev == sorted(dev)
+
+    def test_dev_eval_is_dev_minus_tune(self, tune):
+        test_ids = {tune[0].qid}
+        tune_ids = {tune[1].qid, tune[2].qid}
+
+        dev_eval = splits.dev_eval_ids(tune, test_ids, tune_ids)
+
+        assert not (set(dev_eval) & test_ids)
+        assert not (set(dev_eval) & tune_ids)
+        assert len(dev_eval) == len(tune) - 3
+
+    def test_the_three_splits_partition_the_dataset(self, tune):
+        test_ids = {e.qid for e in tune[:5]}
+        tune_ids = {e.qid for e in tune[5:15]}
+        dev_eval = splits.dev_eval_ids(tune, test_ids, tune_ids)
+
+        assert len(test_ids) + len(tune_ids) + len(dev_eval) == len(tune)

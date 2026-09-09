@@ -1,7 +1,7 @@
 [project]
-name = "scrag"
+name = "amrag"
 version = "0.0.0"
-description = "Self-Correcting Multi-Hop RAG — an experimental retrieval pipeline with evidence verification and self-correction."
+description = "Adaptive Multi-Hop RAG with Evidence Verification — an adaptive multi-hop retrieval pipeline that verifies evidence sufficiency and selectively expands retrieved evidence before answer generation."
 requires-python = ">=3.12,<3.13"
 
 # Dependencies are added phase by phase, never speculatively.

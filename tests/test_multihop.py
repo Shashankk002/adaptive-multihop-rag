@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from scrag import dense
-from scrag.multihop import expansion_text, multihop_retrieve
-from scrag.schema import Example, Paragraph
+from amrag import dense
+from amrag.multihop import expansion_text, multihop_retrieve
+from amrag.schema import Example, Paragraph
 
 from tests.test_dense import fake_encode
 
@@ -98,7 +98,7 @@ class TestTwoHopRetrieval:
             seen.append(query)
             return original(ex, query, k)
 
-        monkeypatch.setattr("scrag.multihop.dense_retrieve", spy)
+        monkeypatch.setattr("amrag.multihop.dense_retrieve", spy)
         multihop_retrieve(example, "depp", 2, expansion="title")
 
         assert seen[0] == "depp", "hop 1 uses the bare question"
@@ -115,7 +115,7 @@ class TestRouting:
 
     def _example_with_scores(self, scores):
         """An example whose dense scores are exactly `scores`, via a stub retriever."""
-        from scrag.retrieval import Scored
+        from amrag.retrieval import Scored
 
         paragraphs = tuple(
             Paragraph(f"P{i}", (f"body {i}",)) for i in range(len(scores))
@@ -125,7 +125,7 @@ class TestRouting:
         return example, ranked
 
     def test_wide_margin_skips_hop_two(self, monkeypatch):
-        from scrag import multihop
+        from amrag import multihop
 
         example, ranked = self._example_with_scores([0.9, 0.8, 0.5])  # m23 = 0.30
         monkeypatch.setattr(multihop, "dense_retrieve", lambda e, q, k: ranked[:k])
@@ -138,7 +138,7 @@ class TestRouting:
         assert [r.paragraph.title for r in result] == ["P0", "P1"]
 
     def test_narrow_margin_runs_hop_two(self, monkeypatch):
-        from scrag import multihop
+        from amrag import multihop
 
         example, ranked = self._example_with_scores([0.9, 0.8, 0.79])  # m23 = 0.01
         called = []
@@ -152,7 +152,7 @@ class TestRouting:
         assert called == [True]
 
     def test_threshold_boundary_is_inclusive_of_dense(self, monkeypatch):
-        from scrag import multihop
+        from amrag import multihop
 
         # m23 exactly at the threshold -> keep dense.
         example, ranked = self._example_with_scores([0.9, 0.8, 0.78])
@@ -165,20 +165,20 @@ class TestRouting:
         assert len(multihop.routed_retrieve(example, "q", k=2)) == 2
 
     def test_score_margin_uses_ranks_two_and_three(self):
-        from scrag import multihop
+        from amrag import multihop
 
         _, ranked = self._example_with_scores([0.9, 0.5, 0.4])
         # Not 0.9 - 0.5; the rank-1/rank-2 gap is deliberately not the signal.
         assert multihop.score_margin(ranked) == pytest.approx(0.1)
 
     def test_fewer_than_three_candidates_skips_hop_two(self):
-        from scrag import multihop
+        from amrag import multihop
 
         _, ranked = self._example_with_scores([0.9, 0.8])
         assert multihop.score_margin(ranked) == float("inf")
 
     def test_results_are_correctly_formed(self, example):
-        results = __import__("scrag.multihop", fromlist=["x"]).routed_retrieve(example, "depp", k=2)
+        results = __import__("amrag.multihop", fromlist=["x"]).routed_retrieve(example, "depp", k=2)
         assert len(results) == 2
         assert all(isinstance(r.paragraph, Paragraph) for r in results)
         assert all(isinstance(r.score, float) for r in results)
@@ -186,8 +186,8 @@ class TestRouting:
 
     def test_no_llm_calls(self, example):
         """Routing uses only retrieval scores, so a pipeline built on it reports zero."""
-        from scrag.harness import Prediction, aggregate, evaluate
-        from scrag.multihop import routed_retrieve
+        from amrag.harness import Prediction, aggregate, evaluate
+        from amrag.multihop import routed_retrieve
 
         def pipeline(ex):
             hits = routed_retrieve(ex, ex.question, k=2)

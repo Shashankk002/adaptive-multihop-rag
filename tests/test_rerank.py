@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from scrag import dense, rerank
-from scrag.rerank import rerank_retrieve
-from scrag.schema import Example, Paragraph
+from amrag import dense, rerank
+from amrag.rerank import rerank_retrieve
+from amrag.schema import Example, Paragraph
 
 from tests.test_dense import fake_encode
 

@@ -11,9 +11,9 @@ import json
 import numpy as np
 import pytest
 
-from scrag import dense
-from scrag.dense import CacheMismatch, dense_retrieve
-from scrag.schema import Example, Paragraph
+from amrag import dense
+from amrag.dense import CacheMismatch, dense_retrieve
+from amrag.schema import Example, Paragraph
 
 # A three-word vocabulary. Each text becomes its normalised word-count vector, so
 # similarities are predictable enough to assert exact rankings.
@@ -86,7 +86,7 @@ class TestRetrieval:
         assert first == second
 
     def test_returns_the_same_shape_as_bm25(self, example):
-        from scrag.retrieval import bm25_retrieve
+        from amrag.retrieval import bm25_retrieve
 
         dense_result = dense_retrieve(example, "depp", k=2)
         bm25_result = bm25_retrieve(example, "depp", k=2)
