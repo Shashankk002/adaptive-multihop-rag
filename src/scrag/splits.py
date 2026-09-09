@@ -47,6 +47,8 @@ SMOKE_SIZE = 100
 TUNE_SIZE = 1000
 VERIFY_TUNE_SIZE = 500
 VERIFY_TUNE_PER_TYPE = {QuestionType.BRIDGE: 403, QuestionType.COMPARISON: 97}
+ANSWER_DEV_SIZE = 200
+ANSWER_DEV_PER_TYPE = {QuestionType.BRIDGE: 161, QuestionType.COMPARISON: 39}
 
 DEFAULT_DATASET = Path("data/raw/hotpot_dev_distractor_v1.json")
 DEFAULT_SPLITS_DIR = Path("data/splits")
@@ -54,6 +56,7 @@ TEST_FILENAME = "test_ids.json"
 SMOKE_FILENAME = "smoke_ids.json"
 TUNE_FILENAME = "tune_ids.json"
 VERIFY_TUNE_FILENAME = "verify_tune_ids.json"
+ANSWER_DEV_FILENAME = "answer_dev_ids.json"
 
 
 class SplitError(RuntimeError):
@@ -265,6 +268,78 @@ def write_verify_tune_split(
     return split
 
 
+def select_answer_dev_ids(
+    examples: Sequence[Example],
+    candidate_ids: Iterable[str],
+    *,
+    seed: int = SPLIT_SEED,
+) -> list[str]:
+    """The 200-question subset used to develop the Phase 9 answer generator.
+
+    `candidate_ids` is supplied by the caller rather than read from disk, because the
+    eligible pool is "verify_tune questions that already have a usable verifier
+    verdict" — and this module must not know what a verdict is. Quotas hold
+    verify_tune's 403/97 ratio at a fifth of the size.
+    """
+    pool = set(candidate_ids)
+    candidates = [e for e in examples if e.qid in pool]
+
+    rng = random.Random(seed + 4)
+    chosen: list[str] = []
+    for question_type, quota in sorted(
+        ANSWER_DEV_PER_TYPE.items(), key=lambda kv: kv[0].value
+    ):
+        available = _sorted_ids(e for e in candidates if e.question_type is question_type)
+        if len(available) < quota:
+            raise SplitError(
+                f"cannot draw {quota} {question_type.value} ids: only {len(available)} "
+                "candidates have a usable verdict"
+            )
+        chosen.extend(rng.sample(available, quota))
+    return sorted(chosen)
+
+
+def write_answer_dev_split(
+    examples: Sequence[Example],
+    candidate_ids: Iterable[str],
+    *,
+    splits_dir: Path = DEFAULT_SPLITS_DIR,
+    source: Path = DEFAULT_DATASET,
+    seed: int = SPLIT_SEED,
+    force: bool = False,
+) -> SplitFile:
+    """Generate and write the Phase 9 answer-development subset."""
+    path = splits_dir / ANSWER_DEV_FILENAME
+    if path.exists() and not force:
+        raise SplitError(f"refusing to overwrite frozen split: {path}")
+
+    verify_tune = set(read_split(splits_dir / VERIFY_TUNE_FILENAME).ids)
+    pool = set(candidate_ids)
+    if not pool <= verify_tune:
+        raise SplitError(
+            f"{len(pool - verify_tune)} candidate ids are outside verify_tune"
+        )
+
+    split = SplitFile(
+        name="answer_dev",
+        seed=seed + 4,
+        source=str(source),
+        description=(
+            f"Phase 9 answer-generation development subset: {ANSWER_DEV_SIZE} ids "
+            + ", ".join(
+                f"{n} {t.value}"
+                for t, n in sorted(ANSWER_DEV_PER_TYPE.items(), key=lambda kv: kv[0].value)
+            )
+            + ". Subset of verify_tune, restricted to questions with a usable Phase 7 "
+            "verdict so no extra verification calls are needed. Disjoint from TEST."
+        ),
+        ids=tuple(select_answer_dev_ids(examples, pool, seed=seed)),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(split.to_json(), indent=2) + "\n", encoding="utf-8")
+    return split
+
+
 def write_tune_split(
     examples: Sequence[Example],
     *,
@@ -359,7 +434,8 @@ def read_split(path: Path) -> SplitFile:
 def load_split_ids(name: str, *, splits_dir: Path = DEFAULT_SPLITS_DIR) -> frozenset[str]:
     """Ids of a named split ('test' or 'smoke'), for filtering examples at load time."""
     filename = {"test": TEST_FILENAME, "smoke": SMOKE_FILENAME, "tune": TUNE_FILENAME,
-                "verify_tune": VERIFY_TUNE_FILENAME}[name]
+                "verify_tune": VERIFY_TUNE_FILENAME,
+                "answer_dev": ANSWER_DEV_FILENAME}[name]
     return frozenset(read_split(splits_dir / filename).ids)
 
 
