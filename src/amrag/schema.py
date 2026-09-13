@@ -38,8 +38,8 @@ class QuestionType(str, Enum):
 class Paragraph:
     """One candidate paragraph, kept split into sentences.
 
-    Sentence granularity is preserved because supporting facts are labelled per
-    sentence; the verification stage needs that granularity.
+    Sentence granularity is preserved because supporting facts are labelled and
+    scored per sentence.
     """
 
     title: str

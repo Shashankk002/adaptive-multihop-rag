@@ -5,7 +5,13 @@ This module assigns every question in the dataset to exactly one of:
     TEST  — 150 stratified ids, frozen. Never tuned against.
     DEV   — everything else. Defined by exclusion, so it is never materialised as a
             second copy of the data.
-    SMOKE — 100 ids drawn from DEV, for fast iteration.
+
+and carves development subsets out of DEV:
+
+    SMOKE       — 100 ids, wiring checks only
+    TUNE        — 1000 ids, hyperparameter selection (DEV-EVAL is DEV minus TUNE)
+    verify_tune — 500 ids from TUNE, verifier evaluation
+    answer_dev  — 200 ids from verify_tune, answer-policy development
 
 Only question ids are stored. The dataset itself is never copied, moved, or modified;
 splits are applied by filtering examples at load time.
@@ -182,7 +188,8 @@ def select_tune_ids(
 
     Stratified to DEV's own bridge/comparison ratio, with its own RNG stream.
     """
-    dev = [e for e in examples if e.qid not in set(test_ids)]
+    excluded = set(test_ids)
+    dev = [e for e in examples if e.qid not in excluded]
     bridge = _sorted_ids(e for e in dev if e.question_type is QuestionType.BRIDGE)
     comparison = _sorted_ids(e for e in dev if e.question_type is QuestionType.COMPARISON)
 
@@ -432,7 +439,7 @@ def read_split(path: Path) -> SplitFile:
 
 
 def load_split_ids(name: str, *, splits_dir: Path = DEFAULT_SPLITS_DIR) -> frozenset[str]:
-    """Ids of a named split ('test' or 'smoke'), for filtering examples at load time."""
+    """Ids of a named split, for filtering examples at load time."""
     filename = {"test": TEST_FILENAME, "smoke": SMOKE_FILENAME, "tune": TUNE_FILENAME,
                 "verify_tune": VERIFY_TUNE_FILENAME,
                 "answer_dev": ANSWER_DEV_FILENAME}[name]
@@ -466,7 +473,13 @@ def verify_splits(
     splits_dir: Path = DEFAULT_SPLITS_DIR,
     seed: int = SPLIT_SEED,
 ) -> VerificationResult:
-    """Check the written splits against every property the plan requires."""
+    """Check the written splits against every property the plan requires.
+
+    TEST and SMOKE are regenerated from the seed and compared exactly. The later
+    development subsets are checked for size, containment and disjointness from TEST;
+    TUNE and verify_tune are regenerated too. answer_dev cannot be regenerated here —
+    its candidate pool depended on which questions had a usable verdict.
+    """
     test = read_split(splits_dir / TEST_FILENAME)
     smoke = read_split(splits_dir / SMOKE_FILENAME)
     test_ids, smoke_ids = set(test.ids), set(smoke.ids)
@@ -534,6 +547,39 @@ def verify_splits(
         (
             "SMOKE selection deterministic",
             regenerated_smoke == list(smoke.ids),
+            "regenerated selection is identical",
+        )
+    )
+
+    tune = read_split(splits_dir / TUNE_FILENAME)
+    verify_tune = read_split(splits_dir / VERIFY_TUNE_FILENAME)
+    answer_dev = read_split(splits_dir / ANSWER_DEV_FILENAME)
+    for split, size in (
+        (tune, TUNE_SIZE), (verify_tune, VERIFY_TUNE_SIZE), (answer_dev, ANSWER_DEV_SIZE)
+    ):
+        ids, name = set(split.ids), split.name
+        checks.append((f"{name} size", len(ids) == size, f"{len(split.ids)} ids (expected {size})"))
+        checks.append((f"{name} ids unique", len(ids) == len(split.ids), f"{len(ids)} distinct"))
+        shared = ids & test_ids
+        checks.append((f"{name} disjoint from TEST", not shared, f"{len(shared)} shared ids"))
+    checks.append(
+        ("verify_tune drawn from TUNE", set(verify_tune.ids) <= set(tune.ids), "subset check")
+    )
+    checks.append(
+        ("answer_dev drawn from verify_tune", set(answer_dev.ids) <= set(verify_tune.ids), "subset check")
+    )
+    checks.append(
+        (
+            "TUNE selection deterministic",
+            select_tune_ids(examples, test.ids, seed=seed) == list(tune.ids),
+            "regenerated selection is identical",
+        )
+    )
+    regenerated_verify_tune = select_verify_tune_ids(examples, tune.ids, seed=seed)
+    checks.append(
+        (
+            "verify_tune selection deterministic",
+            regenerated_verify_tune == list(verify_tune.ids),
             "regenerated selection is identical",
         )
     )

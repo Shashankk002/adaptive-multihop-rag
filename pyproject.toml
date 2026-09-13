@@ -4,19 +4,15 @@ version = "0.0.0"
 description = "Adaptive Multi-Hop RAG with Evidence Verification — an adaptive multi-hop retrieval pipeline that verifies evidence sufficiency and selectively expands retrieved evidence before answer generation."
 requires-python = ">=3.12,<3.13"
 
-# Dependencies are added phase by phase, never speculatively.
-# Nothing is installed without explicit approval. See CLAUDE.md.
-# Versions are deliberately unpinned for now; the resolved set is recorded in
-# PROJECT_PLAN.md alongside the Phase 3 results.
+# Unpinned on purpose; the set the reported results were produced with is recorded in
+# README.md (Setup).
 dependencies = [
-    "sentence-transformers",  # dense embeddings (Phase 3)
-    "numpy",                  # embedding maths and the embedding cache
-    "google-genai",           # Gemini verifier (Phase 7)
+    "sentence-transformers",  # dense embeddings (and the rejected cross-encoder)
+    "numpy",                  # similarity maths and the embedding cache
+    "google-genai",           # Gemini verifier and generator
 ]
 
 [project.optional-dependencies]
-# Tooling only — never runtime dependencies. Install with:
-#   .venv/bin/python -m pip install -e ".[dev]"
 dev = [
     "pytest>=9.1,<10",
 ]
@@ -31,9 +27,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-# Make `.venv/bin/python -m pytest` work from a bare checkout, before the package
-# has been installed. With an editable install this is simply redundant.
-pythonpath = ["src"]
+# "src" lets the suite run before the package is installed; "." makes the shared test
+# fakes (`tests.test_dense.fake_encode`) importable under a bare `pytest` too.
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100

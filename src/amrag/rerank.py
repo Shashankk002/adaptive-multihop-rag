@@ -18,13 +18,12 @@ used for ranking only, which is all our metrics consume.
 
 from __future__ import annotations
 
-from amrag.dense import dense_retrieve
+from amrag.dense import dense_retrieve, device
 from amrag.retrieval import Scored, indexed_text
 from amrag.schema import Example
 
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 MODEL_REVISION = "233902d25c440f23af6f7d6e94d2946bac0bee0a"
-DEVICE = "mps"  # 2.4x faster than CPU here, with identical top-k rankings
 DEFAULT_DEPTH = 5
 
 _model = None
@@ -36,7 +35,7 @@ def get_reranker():
     if _model is None:
         from sentence_transformers import CrossEncoder
 
-        _model = CrossEncoder(MODEL_NAME, revision=MODEL_REVISION, device=DEVICE)
+        _model = CrossEncoder(MODEL_NAME, revision=MODEL_REVISION, device=device())
     return _model
 
 

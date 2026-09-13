@@ -22,7 +22,6 @@ from amrag.schema import Example
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
-DEVICE = "mps"  # 2.5x faster than CPU here, with identical top-k rankings
 DIMENSION = 384
 
 # bge models are trained for asymmetric retrieval: the query gets an instruction
@@ -39,15 +38,21 @@ class CacheMismatch(RuntimeError):
     """The cache on disk was built with a different model or revision."""
 
 
+def device() -> str:
+    """Apple MPS when available (2.5x faster than CPU, identical top-k rankings on
+    100 real questions), otherwise CPU. Rankings do not depend on the device."""
+    import torch
+
+    return "mps" if torch.backends.mps.is_available() else "cpu"
+
+
 def get_model():
     """Load the model once, on first use."""
     global _model
     if _model is None:
         from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(
-            MODEL_NAME, revision=MODEL_REVISION, device=DEVICE
-        )
+        _model = SentenceTransformer(MODEL_NAME, revision=MODEL_REVISION, device=device())
     return _model
 
 
@@ -98,7 +103,6 @@ def build_cache(texts: list[str], path: Path = CACHE_PATH) -> int:
         "model": MODEL_NAME,
         "revision": MODEL_REVISION,
         "dimension": DIMENSION,
-        "device": DEVICE,
         "count": len(unique),
     }
     path.parent.mkdir(parents=True, exist_ok=True)

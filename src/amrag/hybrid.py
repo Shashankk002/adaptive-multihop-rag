@@ -21,8 +21,8 @@ from amrag.dense import dense_retrieve
 from amrag.retrieval import Scored, bm25_retrieve
 from amrag.schema import Example
 
-DEFAULT_RRF_K = 1
-"""Chosen by sweeping DEV both@2; see PROJECT_PLAN.md.
+DEFAULT_RRF_K = 3
+"""Peak of the DEV both@2 sweep (0.507; see PROJECT_PLAN.md, Phase 4).
 
 The published default of 60 is tuned for ~1000-document TREC lists. Over 10 candidates
 it flattens RRF into "average rank": weights span only 1/61 to 1/70. A small constant

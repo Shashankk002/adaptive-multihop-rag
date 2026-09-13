@@ -78,9 +78,13 @@ retrieval metric, and "re-retrieval" is impossible — only re-ranking or lookin
 | `answer_dev` | 200 | 20260912 | answer-policy development |
 | SMOKE | 100 | 20260909 | wiring checks only |
 
-All are stratified, deterministic, SHA-256 hashed, and regenerable via
-`python -m amrag.splits`. TEST was never read during development: no TEST question id
-appeared in either LLM cache before the final run.
+All are stratified and deterministic; `python -m amrag.splits verify` regenerates
+TEST, SMOKE, TUNE and `verify_tune` from the seed and checks them against the committed
+files (`answer_dev` depended on which questions had a usable verdict, so it is checked for
+size and containment only). TEST was never read during development: no TEST question id
+appeared in either LLM cache before the TEST evaluation began. The evaluation itself was
+interrupted twice by daily quota and resumed from cache, which is where the 18
+cache-served calls come from.
 
 ## Phases
 

@@ -1,6 +1,6 @@
 """Run the frozen TEST evaluation end to end.
 
-    .venv/bin/python scripts/run_test.py
+    .venv/bin/python scripts/run_test.py        # from the repository root
 
 Executes `amrag.pipeline.run` — the real pipeline, not experiment logic — over the
 150 frozen TEST questions, scores them with the existing harness, and writes a
@@ -45,7 +45,8 @@ def main() -> int:
     test_ids = sorted(load_split_ids("test"))          # the frozen artifact, as-is
     subset = [by_id[qid] for qid in test_ids]
 
-    dense.load_cache()
+    if dense.CACHE_PATH.exists():        # optional: without it the 150 questions are embedded live
+        dense.load_cache()
     pipeline.load_caches()
 
     print(f"FROZEN TEST RUN — {len(subset)} questions")
